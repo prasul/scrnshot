@@ -1,6 +1,4 @@
 name: release
-<<<<<<< HEAD
-
 on:
   push:
     tags:
