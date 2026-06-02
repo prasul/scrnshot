@@ -7,6 +7,17 @@
   "jpeg_quality": 90,
   "copy_to_clipboard": true,
 
+  "video": {
+    "screen_index": 1,
+    "framerate": 30,
+    "codec": "h264_videotoolbox",
+    "quality": 60,
+    "scale_percent": 0,
+    "capture_cursor": true,
+    "faststart": true,
+    "container": "mp4"
+  },
+
   "destinations": {
     "bigscoots": {
       "type": "ftps",

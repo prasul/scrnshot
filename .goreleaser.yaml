@@ -50,6 +50,25 @@ archives:
 checksum:
   name_template: "checksums.txt"
 
+# Auto-generated release notes grouped by commit prefix.
+changelog:
+  sort: asc
+  use: github
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
 # Optional: publish a Homebrew formula to your own tap so users can
 # `brew install prasul/tap/scrnshot`. Fill in the tap repo to enable.
 # brews:

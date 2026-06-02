@@ -9,20 +9,26 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"strings"
 
 	"github.com/prasul/scrnshot/internal/uploader"
 )
+
+// version is injected at build time via -ldflags "-X main.version=...".
+var version = "dev"
 
 // ---------------------------------------------------------------------------
 // Config — TWEAK ZONE lives in ~/.config/scrnshot/config.json
@@ -40,7 +46,24 @@ type Config struct {
 	PNGCompression int  `json:"png_compression"` // 0-9
 	JPEGQuality    int  `json:"jpeg_quality"`    // 1-100
 
+	// Screen recording (used with -record). Encoding settings ARE the
+	// optimization: a hardware encoder + faststart keeps files small and
+	// instantly streamable.
+	Video VideoConfig `json:"video"`
+
 	CopyToClipboard bool `json:"copy_to_clipboard"`
+}
+
+// VideoConfig controls ffmpeg-based screen recording on macOS (avfoundation).
+type VideoConfig struct {
+	ScreenIndex   int    `json:"screen_index"`   // avfoundation "Capture screen N" index (see -list-screens)
+	Framerate     int    `json:"framerate"`      // e.g. 30
+	Codec         string `json:"codec"`          // h264_videotoolbox | hevc_videotoolbox | libx264
+	Quality       int    `json:"quality"`        // videotoolbox -q:v (1-100, higher=better)
+	ScalePercent  int    `json:"scale_percent"`  // 0 or 100 = no downscale
+	CaptureCursor bool   `json:"capture_cursor"` // include the mouse pointer
+	Faststart     bool   `json:"faststart"`      // move moov atom to front for instant web playback
+	Container     string `json:"container"`      // mp4 | mov
 }
 
 func defaultConfig() Config {
@@ -75,11 +98,21 @@ func defaultConfig() Config {
 				URLJSONKey: "data.url",
 			},
 		},
-		Optimize:        true,
-		ResizePercent:   80,
-		Colors:          256,
-		PNGCompression:  9,
-		JPEGQuality:     90,
+		Optimize:       true,
+		ResizePercent:  80,
+		Colors:         256,
+		PNGCompression: 9,
+		JPEGQuality:    90,
+		Video: VideoConfig{
+			ScreenIndex:   1, // run `scrnshot -list-screens` to confirm
+			Framerate:     30,
+			Codec:         "h264_videotoolbox",
+			Quality:       60,
+			ScalePercent:  0,
+			CaptureCursor: true,
+			Faststart:     true,
+			Container:     "mp4",
+		},
 		CopyToClipboard: true,
 	}
 }
@@ -110,16 +143,33 @@ func bold(s string) string   { return col("1", s) }
 
 func main() {
 	var (
-		fConfig  = flag.String("config", defaultConfigPath(), "config file path")
-		fDest    = flag.String("dest", "", "destination name from config (overrides default)")
-		fFile    = flag.String("file", "", "upload this existing file instead of capturing")
-		fCapture = flag.String("capture", "interactive", "capture mode: interactive | window | full")
-		fNoOpt   = flag.Bool("no-optimize", false, "skip optimization")
-		fNoClip  = flag.Bool("no-clipboard", false, "do not copy URL to clipboard")
-		fKeep    = flag.Bool("keep", false, "keep the local file after upload")
-		fList    = flag.Bool("list", false, "list configured destinations and exit")
+		fConfig   = flag.String("config", defaultConfigPath(), "config file path")
+		fDest     = flag.String("dest", "", "destination name from config (overrides default)")
+		fFile     = flag.String("file", "", "upload this existing file instead of capturing")
+		fCapture  = flag.String("capture", "interactive", "capture mode: interactive | window | full")
+		fRecord   = flag.Bool("record", false, "record a screen video instead of a screenshot")
+		fDuration = flag.Int("duration", 0, "recording length in seconds (0 = until you press Enter)")
+		fListScr  = flag.Bool("list-screens", false, "list avfoundation capture devices and exit")
+		fNoOpt    = flag.Bool("no-optimize", false, "skip optimization")
+		fNoClip   = flag.Bool("no-clipboard", false, "do not copy URL to clipboard")
+		fKeep     = flag.Bool("keep", false, "keep the local file after upload")
+		fList     = flag.Bool("list", false, "list configured destinations and exit")
+		fVersion  = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
+
+	if *fVersion {
+		fmt.Println("scrnshot", version)
+		return
+	}
+
+	if *fListScr {
+		if err := listScreens(); err != nil {
+			fmt.Fprintln(os.Stderr, red(err.Error()))
+			os.Exit(1)
+		}
+		return
+	}
 
 	cfg, err := loadConfig(*fConfig)
 	if err != nil {
@@ -158,9 +208,17 @@ func main() {
 	// 1. Obtain a file: either the one passed in, or a fresh capture.
 	var srcPath string
 	var cleanupSrc bool
-	if *fFile != "" {
+	switch {
+	case *fFile != "":
 		srcPath = *fFile
-	} else {
+	case *fRecord:
+		srcPath, err = recordVideo(cfg.Video, *fDuration)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, red("record: ")+err.Error())
+			os.Exit(1)
+		}
+		cleanupSrc = true
+	default:
 		srcPath, err = capture(*fCapture)
 		if err != nil {
 			fmt.Fprintln(os.Stderr, red("capture: ")+err.Error())
@@ -261,6 +319,128 @@ func capture(mode string) (string, error) {
 		return "", nil
 	}
 	return out, nil
+}
+
+// ---------------------------------------------------------------------------
+// Screen recording via ffmpeg + avfoundation
+// ---------------------------------------------------------------------------
+
+// listScreens prints avfoundation devices so the user can find the screen index.
+func listScreens() error {
+	if runtime.GOOS != "darwin" {
+		return fmt.Errorf("listing capture devices needs macOS")
+	}
+	// ffmpeg writes the device list to stderr and exits non-zero by design.
+	cmd := exec.Command("ffmpeg", "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", "")
+	out, _ := cmd.CombinedOutput()
+	fmt.Print(string(out))
+	return nil
+}
+
+// recordVideo records the screen with ffmpeg. Encoding settings double as the
+// optimization step: a hardware (VideoToolbox) encoder keeps CPU low, and
+// +faststart makes the uploaded file play before it finishes downloading.
+func recordVideo(v VideoConfig, duration int) (string, error) {
+	if runtime.GOOS != "darwin" {
+		return "", fmt.Errorf("recording needs macOS; use -file on other platforms")
+	}
+	if _, err := exec.LookPath("ffmpeg"); err != nil {
+		return "", fmt.Errorf("ffmpeg not found — install it with: brew install ffmpeg")
+	}
+
+	container := v.Container
+	if container == "" {
+		container = "mp4"
+	}
+	out := filepath.Join(os.TempDir(), "scrnshot-rec-"+mustRandom()+"."+container)
+
+	// Input options MUST precede -i (ffmpeg is order-sensitive).
+	args := []string{"-hide_banner", "-f", "avfoundation"}
+	if v.Framerate > 0 {
+		args = append(args, "-framerate", fmt.Sprintf("%d", v.Framerate))
+	}
+	cursor := "0"
+	if v.CaptureCursor {
+		cursor = "1"
+	}
+	args = append(args, "-capture_cursor", cursor)
+	args = append(args, "-i", fmt.Sprintf("%d", v.ScreenIndex)) // video only, no audio
+
+	// Encoder = optimization.
+	codec := v.Codec
+	if codec == "" {
+		codec = "h264_videotoolbox"
+	}
+	args = append(args, "-c:v", codec)
+	switch {
+	case strings.Contains(codec, "videotoolbox"):
+		q := v.Quality
+		if q == 0 {
+			q = 60
+		}
+		args = append(args, "-q:v", fmt.Sprintf("%d", q))
+	case strings.HasPrefix(codec, "libx"):
+		args = append(args, "-crf", "23", "-preset", "veryfast")
+	}
+	if v.ScalePercent > 0 && v.ScalePercent != 100 {
+		f := float64(v.ScalePercent) / 100.0
+		args = append(args, "-vf", fmt.Sprintf("scale=trunc(iw*%.4f/2)*2:trunc(ih*%.4f/2)*2", f, f))
+	}
+	args = append(args, "-pix_fmt", "yuv420p") // widest player/browser compatibility
+	if v.Faststart {
+		args = append(args, "-movflags", "+faststart")
+	}
+	if duration > 0 {
+		args = append(args, "-t", fmt.Sprintf("%d", duration))
+	}
+	args = append(args, "-y", out)
+
+	cmd := exec.Command("ffmpeg", args...)
+	cmd.Stderr = os.Stderr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		return "", err
+	}
+	if err := cmd.Start(); err != nil {
+		return "", err
+	}
+
+	// Graceful stop: writing "q" to ffmpeg's stdin makes it finalize the file
+	// cleanly (a hard kill would leave an unplayable, unfinalized container).
+	stop := func() { _, _ = io.WriteString(stdin, "q\n") }
+
+	if duration > 0 {
+		fmt.Printf("%s recording for %ds...\n", blue("●"), duration)
+	} else {
+		fmt.Printf("%s recording — press Enter (or Ctrl-C) to stop\n", blue("●"))
+		sigCh := make(chan os.Signal, 1)
+		signal.Notify(sigCh, os.Interrupt)
+		go func() {
+			select {
+			case <-sigCh:
+			case <-readLine():
+			}
+			stop()
+		}()
+	}
+
+	if err := cmd.Wait(); err != nil {
+		// ffmpeg may exit non-zero on a stop signal; trust the file if it exists.
+		if _, statErr := os.Stat(out); statErr != nil {
+			return "", err
+		}
+	}
+	return out, nil
+}
+
+// readLine returns a channel that fires once the user presses Enter.
+func readLine() <-chan struct{} {
+	ch := make(chan struct{}, 1)
+	go func() {
+		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+		ch <- struct{}{}
+	}()
+	return ch
 }
 
 // ---------------------------------------------------------------------------
