@@ -1,0 +1,52 @@
+{
+  "default_destination": "bigscoots",
+  "optimize": true,
+  "resize_percent": 80,
+  "colors": 256,
+  "png_compression": 9,
+  "jpeg_quality": 90,
+  "copy_to_clipboard": true,
+
+  "destinations": {
+    "bigscoots": {
+      "type": "ftps",
+      "host": "38.58.227.202",
+      "port": 21,
+      "user": "PUT_NEW_USERNAME_HERE",
+      "pass": "PUT_NEW_PASSWORD_HERE",
+      "remote_dir": "/",
+      "verify_cert": false,
+      "share_url": "https://share.bigscoots.com/PUT_NEW_TOKEN_HERE"
+    },
+
+    "my-sftp": {
+      "type": "sftp",
+      "host": "example.com",
+      "port": 22,
+      "user": "deploy",
+      "private_key": "~/.ssh/id_ed25519",
+      "remote_dir": "/var/www/share",
+      "share_url": "https://share.example.com"
+    },
+
+    "cloudflare-r2": {
+      "type": "s3",
+      "endpoint": "https://ACCOUNT_ID.r2.cloudflarestorage.com",
+      "region": "auto",
+      "bucket": "screenshots",
+      "access_key": "R2_ACCESS_KEY",
+      "secret_key": "R2_SECRET_KEY",
+      "key_prefix": "shots/",
+      "share_url": "https://cdn.example.com"
+    },
+
+    "custom-http": {
+      "type": "http",
+      "url": "https://example.com/api/upload",
+      "file_field": "file",
+      "headers": { "Authorization": "Bearer YOUR_TOKEN" },
+      "form_data": { "album": "screenshots" },
+      "url_json_key": "data.url"
+    }
+  }
+}
