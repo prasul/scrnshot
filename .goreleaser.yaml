@@ -10,7 +10,10 @@ project_name: scrnshot
 
 before:
   hooks:
-    - go mod tidy
+    # Non-mutating: verifies go.sum and runs tests without dirtying the tree
+    # (a `go mod tidy` here could change go.sum and fail the clean-git check).
+    - go mod download
+    - go test ./...
 
 builds:
   - id: scrnshot
