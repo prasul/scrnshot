@@ -1,4 +1,8 @@
 # scrnshot
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+>>>>>>> f57a46f15431f22f04c5e46cbf02ca9868bc24ed
 
 A ShareX-style capture → optimize → upload tool for macOS. Capture a region,
 optimize the image, upload it to your own server, and get the share URL on your
@@ -98,3 +102,9 @@ would require. (A built-in hotkey is on the roadmap.)
 - `verify_cert: false` on FTPS/S3/HTTP disables TLS certificate verification —
   it mirrors the original lftp `verify-certificate no`. Prefer leaving it
   unset (verification on) unless your server needs it off.
+<<<<<<< HEAD
+=======
+=======
+A terminal level screenshot tool that helps you upload the files on to remote SFTP server
+>>>>>>> 1e94d5490cf54d9450ebf86b0725dccec815daeb
+>>>>>>> f57a46f15431f22f04c5e46cbf02ca9868bc24ed

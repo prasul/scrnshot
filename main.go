@@ -24,9 +24,12 @@ import (
 	"github.com/prasul/scrnshot/internal/uploader"
 )
 
+<<<<<<< HEAD
 // version is injected at build time via -ldflags "-X main.version=...".
 var version = "dev"
 
+=======
+>>>>>>> f57a46f15431f22f04c5e46cbf02ca9868bc24ed
 // ---------------------------------------------------------------------------
 // Config — TWEAK ZONE lives in ~/.config/scrnshot/config.json
 // ---------------------------------------------------------------------------
@@ -121,6 +124,7 @@ func main() {
 		fNoClip  = flag.Bool("no-clipboard", false, "do not copy URL to clipboard")
 		fKeep    = flag.Bool("keep", false, "keep the local file after upload")
 		fList    = flag.Bool("list", false, "list configured destinations and exit")
+<<<<<<< HEAD
 		fVersion = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
@@ -130,6 +134,11 @@ func main() {
 		return
 	}
 
+=======
+	)
+	flag.Parse()
+
+>>>>>>> f57a46f15431f22f04c5e46cbf02ca9868bc24ed
 	cfg, err := loadConfig(*fConfig)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, red("config: ")+err.Error())
