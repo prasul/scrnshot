@@ -54,8 +54,15 @@ type Config struct {
 	CopyToClipboard bool `json:"copy_to_clipboard"`
 }
 
-// VideoConfig controls ffmpeg-based screen recording on macOS (avfoundation).
+// VideoConfig controls video handling on macOS. The first group is used by the
+// built-in avconvert transcoder when you optimize an existing recording
+// (scrnshot -file clip.mov). The second group is only used by the optional
+// ffmpeg-based live recorder (scrnshot -record).
 type VideoConfig struct {
+	// --- avconvert optimization (transcode a finished file) ---
+	Preset string `json:"preset"` // avconvert preset, e.g. Preset1920x1080 (H.264) or PresetHEVCHighestQuality
+
+	// --- ffmpeg live recording (-record); optional ---
 	ScreenIndex   int    `json:"screen_index"`   // avfoundation "Capture screen N" index (see -list-screens)
 	Framerate     int    `json:"framerate"`      // e.g. 30
 	Codec         string `json:"codec"`          // h264_videotoolbox | hevc_videotoolbox | libx264
@@ -63,7 +70,7 @@ type VideoConfig struct {
 	ScalePercent  int    `json:"scale_percent"`  // 0 or 100 = no downscale
 	CaptureCursor bool   `json:"capture_cursor"` // include the mouse pointer
 	Faststart     bool   `json:"faststart"`      // move moov atom to front for instant web playback
-	Container     string `json:"container"`      // mp4 | mov
+	Container     string `json:"container"`      // output container: mp4 | mov | m4v
 }
 
 func defaultConfig() Config {
@@ -104,7 +111,8 @@ func defaultConfig() Config {
 		PNGCompression: 9,
 		JPEGQuality:    90,
 		Video: VideoConfig{
-			ScreenIndex:   1, // run `scrnshot -list-screens` to confirm
+			Preset:        "Preset1920x1080", // H.264 1080p: small + plays everywhere
+			ScreenIndex:   1,                 // run `scrnshot -list-screens` to confirm
 			Framerate:     30,
 			Codec:         "h264_videotoolbox",
 			Quality:       60,
@@ -234,22 +242,38 @@ func main() {
 	ext := strings.ToLower(filepath.Ext(srcPath))
 	beforeSize, _ := fileSize(srcPath)
 
-	// 2. Optimize into a temp file if applicable.
+	// 2. Optimize into a temp file if applicable. outExt may change if a video
+	//    is transcoded into a different container (e.g. .mov -> .mp4).
 	workPath := srcPath
-	if cfg.Optimize && !*fNoOpt && optimizable(ext) {
-		tmp := filepath.Join(os.TempDir(), "scrnshot-opt-"+mustRandom()+ext)
-		if err := optimize(srcPath, tmp, ext, cfg); err != nil {
-			fmt.Println(yellow("optimize failed (" + err.Error() + ") — uploading original"))
-		} else {
-			workPath = tmp
-			defer os.Remove(tmp)
-			after, _ := fileSize(tmp)
-			fmt.Printf("%s %s -> %s\n", green("optimized"), humanSize(beforeSize), humanSize(after))
+	outExt := ext
+	if cfg.Optimize && !*fNoOpt {
+		switch {
+		case optimizable(ext): // images via ImageMagick
+			tmp := filepath.Join(os.TempDir(), "scrnshot-opt-"+mustRandom()+ext)
+			if err := optimize(srcPath, tmp, ext, cfg); err != nil {
+				fmt.Println(yellow("optimize failed (" + err.Error() + ") — uploading original"))
+			} else {
+				workPath = tmp
+				defer os.Remove(tmp)
+				after, _ := fileSize(tmp)
+				fmt.Printf("%s %s -> %s\n", green("optimized"), humanSize(beforeSize), humanSize(after))
+			}
+		case isVideo(ext): // video via the built-in avconvert (no ffmpeg)
+			tmp, err := transcodeVideo(srcPath, cfg.Video)
+			if err != nil {
+				fmt.Println(yellow("transcode failed (" + err.Error() + ") — uploading original"))
+			} else {
+				workPath = tmp
+				outExt = filepath.Ext(tmp)
+				defer os.Remove(tmp)
+				after, _ := fileSize(tmp)
+				fmt.Printf("%s %s -> %s\n", green("optimized"), humanSize(beforeSize), humanSize(after))
+			}
 		}
 	}
 
-	// 3. Random remote name.
-	remoteName := mustRandom() + ext
+	// 3. Random remote name (uses the post-optimization extension).
+	remoteName := mustRandom() + outExt
 
 	// 4. Upload.
 	fmt.Printf("%s via %s ...\n", blue("uploading"), bold(up.Kind()))
@@ -378,8 +402,9 @@ func recordVideo(v VideoConfig, duration int) (string, error) {
 		if q == 0 {
 			q = 60
 		}
+		// -allow_sw 1 lets VideoToolbox fall back to a software encoder when the
+		// hardware one can't create a session (e.g. 5K/Retina widths > 4096).
 		args = append(args, "-q:v", fmt.Sprintf("%d", q), "-allow_sw", "1")
-		//args = append(args, "-q:v", fmt.Sprintf("%d", q))
 	case strings.HasPrefix(codec, "libx"):
 		args = append(args, "-crf", "23", "-preset", "veryfast")
 	}
@@ -454,6 +479,44 @@ func optimizable(ext string) bool {
 		return true
 	}
 	return false
+}
+
+// isVideo reports whether ext is a video container avconvert can read.
+func isVideo(ext string) bool {
+	switch ext {
+	case ".mov", ".mp4", ".m4v":
+		return true
+	}
+	return false
+}
+
+// transcodeVideo shrinks/re-encodes an existing recording using macOS's
+// built-in avconvert — no ffmpeg required. The preset controls resolution and
+// codec; the output extension controls the container.
+func transcodeVideo(src string, v VideoConfig) (string, error) {
+	if runtime.GOOS != "darwin" {
+		return "", fmt.Errorf("video optimization uses avconvert (macOS only)")
+	}
+	if _, err := exec.LookPath("avconvert"); err != nil {
+		return "", fmt.Errorf("avconvert not found (it ships with macOS)")
+	}
+	preset := v.Preset
+	if preset == "" {
+		preset = "Preset1920x1080"
+	}
+	container := v.Container
+	if container == "" {
+		container = "mp4"
+	}
+	out := filepath.Join(os.TempDir(), "scrnshot-vopt-"+mustRandom()+"."+container)
+
+	cmd := exec.Command("avconvert", "--quiet", "--source", src, "--output", out, "--preset", preset)
+	cmd.Stdout = os.Stderr // surface any avconvert progress/errors live
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("avconvert: %w", err)
+	}
+	return out, nil
 }
 
 func optimize(src, dst, ext string, cfg Config) error {
