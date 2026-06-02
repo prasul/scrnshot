@@ -27,9 +27,18 @@ import (
 	"github.com/prasul/scrnshot/internal/uploader"
 )
 
+<<<<<<< HEAD
 // version is injected at build time via -ldflags "-X main.version=...".
 var version = "dev"
 
+=======
+<<<<<<< HEAD
+// version is injected at build time via -ldflags "-X main.version=...".
+var version = "dev"
+
+=======
+>>>>>>> f57a46f15431f22f04c5e46cbf02ca9868bc24ed
+>>>>>>> 2e8b1664db4249d004dea793b3e13c8d8f22bd19
 // ---------------------------------------------------------------------------
 // Config — TWEAK ZONE lives in ~/.config/scrnshot/config.json
 // ---------------------------------------------------------------------------
@@ -143,6 +152,7 @@ func bold(s string) string   { return col("1", s) }
 
 func main() {
 	var (
+<<<<<<< HEAD
 		fConfig   = flag.String("config", defaultConfigPath(), "config file path")
 		fDest     = flag.String("dest", "", "destination name from config (overrides default)")
 		fFile     = flag.String("file", "", "upload this existing file instead of capturing")
@@ -155,6 +165,18 @@ func main() {
 		fKeep     = flag.Bool("keep", false, "keep the local file after upload")
 		fList     = flag.Bool("list", false, "list configured destinations and exit")
 		fVersion  = flag.Bool("version", false, "print version and exit")
+=======
+		fConfig  = flag.String("config", defaultConfigPath(), "config file path")
+		fDest    = flag.String("dest", "", "destination name from config (overrides default)")
+		fFile    = flag.String("file", "", "upload this existing file instead of capturing")
+		fCapture = flag.String("capture", "interactive", "capture mode: interactive | window | full")
+		fNoOpt   = flag.Bool("no-optimize", false, "skip optimization")
+		fNoClip  = flag.Bool("no-clipboard", false, "do not copy URL to clipboard")
+		fKeep    = flag.Bool("keep", false, "keep the local file after upload")
+		fList    = flag.Bool("list", false, "list configured destinations and exit")
+<<<<<<< HEAD
+		fVersion = flag.Bool("version", false, "print version and exit")
+>>>>>>> 2e8b1664db4249d004dea793b3e13c8d8f22bd19
 	)
 	flag.Parse()
 
@@ -163,6 +185,7 @@ func main() {
 		return
 	}
 
+<<<<<<< HEAD
 	if *fListScr {
 		if err := listScreens(); err != nil {
 			fmt.Fprintln(os.Stderr, red(err.Error()))
@@ -171,6 +194,13 @@ func main() {
 		return
 	}
 
+=======
+=======
+	)
+	flag.Parse()
+
+>>>>>>> f57a46f15431f22f04c5e46cbf02ca9868bc24ed
+>>>>>>> 2e8b1664db4249d004dea793b3e13c8d8f22bd19
 	cfg, err := loadConfig(*fConfig)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, red("config: ")+err.Error())

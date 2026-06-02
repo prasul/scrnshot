@@ -220,6 +220,7 @@ func contentTypeFor(name string) string {
 		return "image/gif"
 	case strings.HasSuffix(name, ".webp"):
 		return "image/webp"
+<<<<<<< HEAD
 	case strings.HasSuffix(name, ".mp4"):
 		return "video/mp4"
 	case strings.HasSuffix(name, ".mov"):
@@ -228,6 +229,8 @@ func contentTypeFor(name string) string {
 		return "video/webm"
 	case strings.HasSuffix(name, ".mkv"):
 		return "video/x-matroska"
+=======
+>>>>>>> 2e8b1664db4249d004dea793b3e13c8d8f22bd19
 	default:
 		return "application/octet-stream"
 	}

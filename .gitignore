@@ -1,10 +1,34 @@
+<<<<<<< HEAD
+=======
+<<<<<<< HEAD
+=======
+
+>>>>>>> f57a46f15431f22f04c5e46cbf02ca9868bc24ed
+>>>>>>> 2e8b1664db4249d004dea793b3e13c8d8f22bd19
 # Built binaries
 /scrnshot
 /scrnshot-amd64
 /scrnshot-arm64
+<<<<<<< HEAD
+
+=======
+<<<<<<< HEAD
 
 # GoReleaser output
 /dist/
 
 # Local config (in case anyone copies it into the repo) — holds credentials
 config.json
+=======
+ 
+>>>>>>> 2e8b1664db4249d004dea793b3e13c8d8f22bd19
+# GoReleaser output
+/dist/
+
+# Local config (in case anyone copies it into the repo) — holds credentials
+config.json
+<<<<<<< HEAD
+=======
+ 
+>>>>>>> f57a46f15431f22f04c5e46cbf02ca9868bc24ed
+>>>>>>> 2e8b1664db4249d004dea793b3e13c8d8f22bd19
