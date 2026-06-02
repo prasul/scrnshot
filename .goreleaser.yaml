@@ -1,0 +1,88 @@
+# GoReleaser configuration for scrnshot.
+# Produces a macOS universal binary (Intel + Apple Silicon fused with lipo)
+# plus per-arch archives. Run a release with: goreleaser release --clean
+#
+# Note: the build runs on a real toolchain with network access, so SFTP
+# support (golang.org/x/crypto) is included by default — no build tags needed.
+version: 2
+
+project_name: scrnshot
+
+before:
+  hooks:
+    # Non-mutating: verifies go.sum and runs tests without dirtying the tree
+    # (a `go mod tidy` here could change go.sum and fail the clean-git check).
+    - go mod download
+    - go test ./...
+
+builds:
+  - id: scrnshot
+    main: .
+    binary: scrnshot
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+
+# Fuse the two darwin builds into a single universal binary.
+universal_binaries:
+  - id: scrnshot-universal
+    ids:
+      - scrnshot
+    name_template: scrnshot
+    replace: true
+
+archives:
+  - id: default
+    ids:
+      - scrnshot-universal
+    name_template: "{{ .ProjectName }}_{{ .Version }}_macos_universal"
+    formats: [tar.gz]
+    files:
+      - README.md
+      - config.example.json
+
+checksum:
+  name_template: "checksums.txt"
+
+# Auto-generated release notes grouped by commit prefix.
+changelog:
+  sort: asc
+  use: github
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+# Optional: publish a Homebrew formula to your own tap so users can
+# `brew install prasul/tap/scrnshot`. Fill in the tap repo to enable.
+# brews:
+#   - repository:
+#       owner: prasul
+#       name: homebrew-tap
+#     homepage: "https://github.com/prasul/scrnshot"
+#     description: "ShareX-style capture/optimize/upload tool for macOS"
+#     dependencies:
+#       - name: imagemagick
+#         type: optional
+
+release:
+  github:
+    owner: prasul
+    name: scrnshot
+  draft: true
