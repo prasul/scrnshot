@@ -3,12 +3,6 @@
 /scrnshot-amd64
 /scrnshot-arm64
 
-
-# GoReleaser output
-/dist/
-
-# Local config (in case anyone copies it into the repo) — holds credentials
-config.json
 # GoReleaser output
 /dist/
 

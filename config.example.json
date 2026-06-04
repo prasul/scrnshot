@@ -6,8 +6,11 @@
   "png_compression": 9,
   "jpeg_quality": 90,
   "copy_to_clipboard": true,
+  "annotate": false,
+  "editor": "",
 
   "video": {
+    "preset": "Preset1920x1080",
     "screen_index": 1,
     "framerate": 30,
     "codec": "h264_videotoolbox",

@@ -51,11 +51,6 @@ type Config struct {
 	// instantly streamable.
 	Video VideoConfig `json:"video"`
 
-	// Markup: open the capture in an editor (Preview by default) so you can add
-	// arrows, highlights, text, etc. before it's uploaded.
-	Annotate bool   `json:"annotate"` // open the editor by default (also via -annotate)
-	Editor   string `json:"editor"`   // command to open the image; empty = Preview via `open -a Preview`
-
 	CopyToClipboard bool `json:"copy_to_clipboard"`
 }
 
@@ -164,11 +159,9 @@ func main() {
 		fDuration = flag.Int("duration", 0, "recording length in seconds (0 = until you press Enter)")
 		fListScr  = flag.Bool("list-screens", false, "list avfoundation capture devices and exit")
 		fNoOpt    = flag.Bool("no-optimize", false, "skip optimization")
-		fAnnotate = flag.Bool("annotate", false, "open the capture in Preview for markup before upload")
 		fNoClip   = flag.Bool("no-clipboard", false, "do not copy URL to clipboard")
 		fKeep     = flag.Bool("keep", false, "keep the local file after upload")
 		fList     = flag.Bool("list", false, "list configured destinations and exit")
-		fTUI      = flag.Bool("tui", false, "launch the interactive menu")
 		fVersion  = flag.Bool("version", false, "print version and exit")
 	)
 	flag.Parse()
@@ -200,17 +193,6 @@ func main() {
 				marker = green("* ")
 			}
 			fmt.Printf("%s%s (%s)\n", marker, name, d.Type)
-		}
-		return
-	}
-
-	// Launch the interactive menu when asked, or on a bare `scrnshot` in a
-	// terminal. A no-arg run without a TTY (e.g. from a hotkey/launcher) falls
-	// through to the normal single-shot capture below.
-	if *fTUI || (len(os.Args) == 1 && isTTY(os.Stdin)) {
-		if err := runTUI(cfg); err != nil {
-			fmt.Fprintln(os.Stderr, red(err.Error()))
-			os.Exit(1)
 		}
 		return
 	}
@@ -257,55 +239,22 @@ func main() {
 		cleanupSrc = true
 	}
 
-	url, err := processAndUpload(cfg, up, srcPath, jobOpts{
-		annotate:   *fAnnotate || cfg.Annotate,
-		optimize:   cfg.Optimize && !*fNoOpt,
-		keepLocal:  *fKeep,
-		cleanupSrc: cleanupSrc,
-	})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, red("upload failed: ")+err.Error())
-		os.Exit(1)
-	}
-	presentResult(url, cfg.CopyToClipboard && !*fNoClip)
-}
-
-// uploaderFor builds an Uploader for a destination (wrapper used by the TUI).
-func uploaderFor(d uploader.Destination) (uploader.Uploader, error) {
-	return uploader.New(d)
-}
-
-// jobOpts controls one capture/upload run.
-type jobOpts struct {
-	annotate   bool
-	optimize   bool
-	keepLocal  bool
-	cleanupSrc bool
-}
-
-// processAndUpload runs markup -> optimize -> upload for srcPath and returns the
-// share URL. Shared by the CLI flow and the TUI. It prints progress as it goes.
-func processAndUpload(cfg Config, up uploader.Uploader, srcPath string, o jobOpts) (string, error) {
 	ext := strings.ToLower(filepath.Ext(srcPath))
-
-	if o.annotate && !isVideo(ext) {
-		if err := annotate(srcPath, cfg.Editor); err != nil {
-			fmt.Println(yellow("annotate skipped: " + err.Error()))
-		}
-	}
-
 	beforeSize, _ := fileSize(srcPath)
+
+	// 2. Optimize into a temp file if applicable. outExt may change if a video
+	//    is transcoded into a different container (e.g. .mov -> .mp4).
 	workPath := srcPath
 	outExt := ext
-	var optTmp string
-	if o.optimize {
+	if cfg.Optimize && !*fNoOpt {
 		switch {
 		case optimizable(ext): // images via ImageMagick
 			tmp := filepath.Join(os.TempDir(), "scrnshot-opt-"+mustRandom()+ext)
 			if err := optimize(srcPath, tmp, ext, cfg); err != nil {
 				fmt.Println(yellow("optimize failed (" + err.Error() + ") — uploading original"))
 			} else {
-				workPath, optTmp = tmp, tmp
+				workPath = tmp
+				defer os.Remove(tmp)
 				after, _ := fileSize(tmp)
 				fmt.Printf("%s %s -> %s\n", green("optimized"), humanSize(beforeSize), humanSize(after))
 			}
@@ -314,49 +263,50 @@ func processAndUpload(cfg Config, up uploader.Uploader, srcPath string, o jobOpt
 			if err != nil {
 				fmt.Println(yellow("transcode failed (" + err.Error() + ") — uploading original"))
 			} else {
-				workPath, optTmp = tmp, tmp
+				workPath = tmp
 				outExt = filepath.Ext(tmp)
+				defer os.Remove(tmp)
 				after, _ := fileSize(tmp)
 				fmt.Printf("%s %s -> %s\n", green("optimized"), humanSize(beforeSize), humanSize(after))
 			}
 		}
 	}
-	if optTmp != "" {
-		defer os.Remove(optTmp)
-	}
 
+	// 3. Random remote name (uses the post-optimization extension).
 	remoteName := mustRandom() + outExt
+
+	// 4. Upload.
 	fmt.Printf("%s via %s ...\n", blue("uploading"), bold(up.Kind()))
 	f, err := os.Open(workPath)
 	if err != nil {
-		return "", err
+		fmt.Fprintln(os.Stderr, red("open: ")+err.Error())
+		os.Exit(1)
 	}
 	sz, _ := fileSize(workPath)
 	shareURL, err := up.Upload(remoteName, f, sz)
 	f.Close()
 	if err != nil {
+		fmt.Fprintln(os.Stderr, red("upload failed: ")+err.Error())
 		fmt.Fprintln(os.Stderr, yellow("local file kept at: ")+srcPath)
-		return "", err
+		os.Exit(1)
 	}
 
-	if o.cleanupSrc && !o.keepLocal {
-		_ = os.Remove(srcPath)
-	}
-	return shareURL, nil
-}
-
-// presentResult prints the share URL block and optionally copies to clipboard.
-func presentResult(url string, clip bool) {
+	// 5. Output + clipboard.
 	fmt.Println()
 	fmt.Println(green("======================="))
-	fmt.Println(url)
+	fmt.Println(shareURL)
 	fmt.Println(green("======================="))
-	if clip {
-		if err := copyClipboard(url); err != nil {
+
+	if cfg.CopyToClipboard && !*fNoClip {
+		if err := copyClipboard(shareURL); err != nil {
 			fmt.Println(yellow("(clipboard skipped: " + err.Error() + ")"))
 		} else {
 			fmt.Println(blue("(URL copied to clipboard)"))
 		}
+	}
+
+	if cleanupSrc && !*fKeep {
+		_ = os.Remove(srcPath)
 	}
 }
 
@@ -395,28 +345,9 @@ func capture(mode string) (string, error) {
 	return out, nil
 }
 
-// annotate opens the image in an editor (Preview by default) for markup, then
-// waits for the user to save and return. The editor saves in place, so the same
-// path carries the annotated image into the optimize/upload steps.
-func annotate(path, editor string) error {
-	var cmd *exec.Cmd
-	if editor == "" {
-		if runtime.GOOS != "darwin" {
-			return fmt.Errorf("default markup uses Preview (macOS only); set \"editor\" in config")
-		}
-		cmd = exec.Command("open", "-a", "Preview", path)
-	} else {
-		// editor may include args, e.g. "open -a Shottr"; the path is appended.
-		parts := append(strings.Fields(editor), path)
-		cmd = exec.Command(parts[0], parts[1:]...)
-	}
-	if err := cmd.Run(); err != nil {
-		return err
-	}
-	fmt.Print(blue("Markup the image, save it (Cmd-S), then press Enter to upload..."))
-	bufio.NewReader(os.Stdin).ReadString('\n')
-	return nil
-}
+// ---------------------------------------------------------------------------
+// Screen recording via ffmpeg + avfoundation
+// ---------------------------------------------------------------------------
 
 // listScreens prints avfoundation devices so the user can find the screen index.
 func listScreens() error {
@@ -681,22 +612,6 @@ func fileSize(path string) (int64, error) {
 		return 0, err
 	}
 	return fi.Size(), nil
-}
-
-// isTTY reports whether f is an interactive terminal.
-func isTTY(f *os.File) bool {
-	fi, err := f.Stat()
-	return err == nil && fi.Mode()&os.ModeCharDevice != 0
-}
-
-// expandHome turns a leading ~/ into the user's home directory.
-func expandHome(p string) string {
-	if strings.HasPrefix(p, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, p[2:])
-		}
-	}
-	return p
 }
 
 func humanSize(n int64) string {

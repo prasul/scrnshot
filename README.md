@@ -94,12 +94,14 @@ scrnshot -version              # print version
 | flag            | meaning                                                         |
 |-----------------|-----------------------------------------------------------------|
 | `-dest`         | destination name from the config (overrides `default_destination`) |
+| `-tui`          | launch the interactive menu (also the default with no args in a terminal) |
 | `-file`         | upload an existing file instead of capturing                    |
 | `-capture`      | capture mode: `interactive` (default), `window`, `full`         |
 | `-record`       | record a screen video via ffmpeg instead of a screenshot        |
 | `-duration`     | recording length in seconds (`0` = until you press Enter)       |
 | `-list-screens` | list ffmpeg/avfoundation capture devices                        |
 | `-no-optimize`  | skip optimization, upload as-is                                 |
+| `-annotate`     | open the capture in Preview for markup before upload            |
 | `-no-clipboard` | don't copy the URL to the clipboard                             |
 | `-keep`         | keep the local file after upload                                |
 | `-list`         | list configured destinations                                    |
@@ -135,6 +137,51 @@ scrnshot -record -duration 15   # record, then optimize + upload
 This uses ffmpeg + VideoToolbox. On 5K/Retina displays, set
 `video.scale_percent` (e.g. `50`) so the width drops under the 4096px hardware
 encoder limit; `-allow_sw 1` is passed automatically as a software fallback.
+
+## Interactive menu
+
+Run `scrnshot` with no arguments in a terminal and it opens a menu where you can
+pick what to do — no flags to remember:
+
+```
+  scrnshot
+  destination: bigscoots
+
+  1  Screenshot (region) → upload
+  2  Screenshot (region) → markup → upload
+  3  Window screenshot → upload
+  4  Full screen → upload
+  5  Record screen (ffmpeg) → upload
+  6  Upload a file (enter path)
+  7  Change destination
+  q  Quit
+```
+
+Navigate with ↑/↓ or `j`/`k`, select with Enter or the number key, quit with
+`q`. After each action it shows the share URL and returns to the menu. Force it
+with `-tui`. The menu is dependency-free (no tview/tcell) — it uses raw terminal
+mode and ANSI, so the binary stays lean.
+
+When launched from a hotkey or launcher (no terminal attached), `scrnshot` skips
+the menu and runs a normal single capture, so flag-based usage still works for
+Shortcuts/Raycast.
+
+## Markup (arrows, highlights, text)
+
+Add `-annotate` to open the capture in **Preview** before it uploads. Use
+Preview's Markup toolbar (the pen-tip icon) to draw arrows, boxes, highlights,
+text, or blur, then save with **Cmd-S** and press **Enter** in the terminal —
+scrnshot picks up the edited image and uploads it.
+
+```sh
+scrnshot -annotate              # capture, mark up in Preview, then upload
+scrnshot -file shot.png -annotate
+```
+
+Set `"annotate": true` in the config to make markup the default for every
+capture. To use a different editor (e.g. Shottr, CleanShot, or `open -a`
+another app), set `"editor"` in the config — the image path is appended to that
+command. Markup applies to images only; it's skipped for recordings.
 
 ## Permissions
 
