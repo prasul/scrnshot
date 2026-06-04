@@ -13,7 +13,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
+
+// author is shown in the TUI header.
+const author = "Prasul S"
 
 type menuItem struct {
 	key   string
@@ -193,18 +197,64 @@ func sortedDestNames(cfg Config) []string {
 
 func clearScreen() { fmt.Print("\033[2J\033[H") }
 
+// --- soft modern (Catppuccin-ish) truecolor palette ---
+func tc(r, g, b int, s string) string {
+	return fmt.Sprintf("\x1b[38;2;%d;%d;%dm%s\x1b[0m", r, g, b, s)
+}
+func clrTitle(s string) string   { return "\x1b[1m" + tc(137, 180, 250, s) } // blue, bold
+func clrTagline(s string) string { return tc(186, 194, 222, s) }             // subtext
+func clrVer(s string) string     { return tc(147, 153, 178, s) }             // overlay
+func clrAuthor(s string) string  { return tc(166, 227, 161, s) }             // green
+func clrClaude(s string) string  { return tc(250, 179, 135, s) }             // peach
+func clrAccent(s string) string  { return tc(203, 166, 247, s) }             // mauve
+func clrText(s string) string    { return tc(205, 214, 244, s) }             // text
+func clrBorder(s string) string  { return tc(88, 91, 112, s) }               // surface
+func clrHint(s string) string    { return tc(108, 112, 134, s) }             // overlay0
+
+// headerRow lays out a left and right segment inside a bordered box row,
+// padding from the segments' plain (uncolored) widths so alignment is correct.
+func headerRow(leftPlain, rightPlain, leftColored, rightColored string, inner int) string {
+	pad := inner - utf8.RuneCountInString(leftPlain) - utf8.RuneCountInString(rightPlain)
+	if pad < 1 {
+		pad = 1
+	}
+	return clrBorder("│ ") + leftColored + strings.Repeat(" ", pad) + rightColored + clrBorder(" │")
+}
+
+func renderHeader() {
+	const inner = 56
+	ver := version
+	if ver != "dev" && !strings.HasPrefix(ver, "v") {
+		ver = "v" + ver
+	}
+
+	bar := clrBorder("─")
+	top := clrBorder("┌") + strings.Repeat(bar, inner+2) + clrBorder("┐")
+	bot := clrBorder("└") + strings.Repeat(bar, inner+2) + clrBorder("┘")
+	claude := "✦ GoLang"
+
+	fmt.Print("\r\n  " + top + "\r\n")
+	fmt.Print("  " + headerRow("Scrnshot", author,
+		clrTitle("Scrnshot"), clrAuthor(author), inner) + "\r\n")
+	fmt.Print("  " + headerRow("A no nonsense screenshot program", claude,
+		clrTagline("A no nonsense screenshot program"),
+		clrAccent("✦ ")+clrClaude("powered by Claude"), inner) + "\r\n")
+	fmt.Print("  " + headerRow(ver, "", clrVer(ver), "", inner) + "\r\n")
+	fmt.Print("  " + bot + "\r\n")
+}
+
 func renderMenu(items []menuItem, sel int, dest string) {
 	clearScreen()
-	fmt.Print("\r\n  " + bold("scrnshot") + "\r\n")
-	fmt.Print("  " + col("2", "destination: ") + dest + "\r\n\r\n")
+	renderHeader()
+	fmt.Print("\r\n  " + clrHint("destination: ") + clrAccent(dest) + "\r\n\r\n")
 	for i, it := range items {
-		line := fmt.Sprintf("  %s  %s", it.key, it.label)
 		if i == sel {
-			line = "\033[7m" + line + "\033[0m"
+			fmt.Print(clrAccent("  ▌ ") + clrAccent(it.key) + "  " + clrAccent(it.label) + "\r\n")
+		} else {
+			fmt.Print("    " + clrVer(it.key) + "  " + clrText(it.label) + "\r\n")
 		}
-		fmt.Print(line + "\r\n")
 	}
-	fmt.Print("\r\n  " + col("2", "↑/↓ or j/k · Enter or number to select · q to quit") + "\r\n")
+	fmt.Print("\r\n  " + clrHint("↑/↓ or j/k · Enter or number to select · q to quit") + "\r\n")
 }
 
 func clampIndex(i, n int) int {
