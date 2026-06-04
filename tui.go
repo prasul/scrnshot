@@ -224,7 +224,7 @@ func headerRow(leftPlain, rightPlain, leftColored, rightColored string, inner in
 func renderHeader() {
 	const inner = 56
 	ver := version
-	if ver != "dev" && !strings.HasPrefix(ver, "v") {
+	if ver != "Author" && !strings.HasPrefix(ver, "v") {
 		ver = "v" + ver
 	}
 
@@ -238,7 +238,7 @@ func renderHeader() {
 		clrTitle("Scrnshot"), clrAuthor(author), inner) + "\r\n")
 	fmt.Print("  " + headerRow("A no nonsense screenshot program", claude,
 		clrTagline("A no nonsense screenshot program"),
-		clrAccent("✦ ")+clrClaude("powered by Claude"), inner) + "\r\n")
+		clrAccent("✦ ")+clrClaude("Made with Golang"), inner) + "\r\n")
 	fmt.Print("  " + headerRow(ver, "", clrVer(ver), "", inner) + "\r\n")
 	fmt.Print("  " + bot + "\r\n")
 }
