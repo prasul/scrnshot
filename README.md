@@ -47,13 +47,28 @@ Optional external tools, installed only if you use the matching feature:
 - `avconvert` — video optimization; **ships with macOS**, nothing to install.
 - [ffmpeg](https://ffmpeg.org) (`brew install ffmpeg`) — only for the optional `-record` mode.
 
-### From a release
+### Quick install (latest binary)
 
-Download the universal tarball from the Releases page, then:
+The latest release publishes a ready-to-run macOS universal binary at a stable
+URL, so one line installs it:
+
+```sh
+curl -L https://github.com/prasul/scrnshot/releases/latest/download/scrnshot -o scrnshot
+chmod +x scrnshot
+mv scrnshot ~/bin/scrnshot      # any dir on your PATH
+```
+
+(Downloading via `curl` doesn't set macOS quarantine, so the binary runs without
+a Gatekeeper prompt. It's universal — runs natively on Intel and Apple Silicon.)
+
+### From the versioned archive
+
+Each release also has `scrnshot_<version>_macos_universal.tar.gz`, which bundles
+the README and example config:
 
 ```sh
 tar xzf scrnshot_*_macos_universal.tar.gz
-install -m 0755 scrnshot ~/bin/scrnshot   # any dir on your PATH
+install -m 0755 scrnshot ~/bin/scrnshot
 ```
 
 ### From source

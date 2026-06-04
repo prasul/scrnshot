@@ -38,7 +38,17 @@ universal_binaries:
     replace: true
 
 archives:
-  - id: default
+  # Raw universal binary uploaded under the STABLE name "scrnshot" (no version),
+  # so https://github.com/prasul/scrnshot/releases/latest/download/scrnshot
+  # always fetches a ready-to-run binary.
+  - id: binary
+    ids:
+      - scrnshot-universal
+    formats: [binary]
+    name_template: "scrnshot"
+
+  # Versioned tarball that also bundles the README and example config.
+  - id: targz
     ids:
       - scrnshot-universal
     name_template: "{{ .ProjectName }}_{{ .Version }}_macos_universal"
@@ -85,4 +95,8 @@ release:
   github:
     owner: prasul
     name: scrnshot
-  draft: true
+  # Publish immediately (not a draft) so /releases/latest/ resolves to this
+  # release and the stable download URL works. Tags like v1.2.3-rc1 are flagged
+  # as prereleases automatically and are skipped by /latest/.
+  draft: false
+  prerelease: auto
